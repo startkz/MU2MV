@@ -1,0 +1,22 @@
+parameter,value
+UAVs number,5
+VFCNs number,100
+Road area,500 m x 3000 m
+UAV altitude,50 m
+VFCN speed,18-54 km/h
+Tasks per UAV,10-20
+Task data size,1-10 Mbits
+CPU requirement,100-200 cycles/bit
+Learning rate,0.9
+Discount factor,0.8
+Initial exploration probability,0.9
+Training iterations,5000
+PSO particles / iterations,20 / 50
+FL task,inspection-image classification
+CNN trainable parameters,1.25e+06
+Local epochs / batch size,3 / 32
+FL interval,20 slots
+Max FL participants,20
+Model update traffic,5.0 MB/update
+FL round traffic,105.0 MB/round
+Malicious FL participants,20%

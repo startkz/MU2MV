@@ -1,0 +1,4 @@
+category,Low priority completion,Medium priority completion,High priority completion,Resource occupancy
+30/50/20,83,89,92,70
+50/30/20,75,85,95,80
+70/20/10,60,78,97,82

@@ -1,0 +1,6 @@
+variant,removed_component,uav_payoff,vfcn_payoff,delay_at_10_mbits_ms,energy_at_100_vfcns,high_priority_completion_percent
+MU2MV,None,150,80,375,1.3,97
+w/o PSO+SQP,Slot-level refinement,130,50,500,2.2,92
+w/o DRL,Long-term policy learning,118,46,540,2.6,90
+w/o trust,Trust-weighted aggregation,136,68,430,1.8,88
+w/o game incentive,Dynamic Stackelberg pricing,124,57,455,2.0,89
