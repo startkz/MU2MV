@@ -1,4 +1,4 @@
-name: TCCN VA-RTO prototype tests
+name: TCCN VA-RTO prototype and live AirFogSim validation
 on:
   push:
     branches: [research/tccn-va-rto]
@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 jobs:
-  test:
+  reference-tests:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -16,12 +16,48 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Unit tests
+      - name: Contract and solver tests
         run: python -m unittest discover -s tccn_va_rto -t . -v
-      - name: Small reproducible smoke campaign
+      - name: Independent-engine smoke
         run: python -m tccn_va_rto.core --steps 12 --seeds 2 --out results/va_rto_smoke
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: va-rto-smoke
+          name: reference-smoke
           path: research/tccn_va_rto/results/va_rto_smoke/
+  live-airfogsim:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: research/tccn_va_rto
+    env:
+      PYTHONPATH: ${{ github.workspace }}/research/tccn_va_rto:${{ runner.temp }}/airfogsim
+      USE_CUPY: 'False'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU-only AirFogSim runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'numpy==1.26.4' 'pandas==2.2.2' 'PyYAML>=6,<7' \
+            'sumolib==1.20.0' 'traci==1.20.0' 'networkx>=3.2,<4' \
+            'matplotlib>=3.7,<4' 'pillow>=10,<12' 'shapely>=2,<3' \
+            'osmnx==1.9.4' 'tqdm>=4,<5' 'scipy>=1.11,<2'
+      - name: Checkout upstream AirFogSim at fixed source revision
+        run: |
+          git clone https://github.com/ZhiweiWei-NAMI/AirFogSim.git '${{ runner.temp }}/airfogsim'
+          git -C '${{ runner.temp }}/airfogsim' checkout 76c0edb4ac6c7b5e09cc146db9928c1bc64bbb60
+          git -C '${{ runner.temp }}/airfogsim' rev-parse HEAD
+      - name: Live AirFogSim matched-budget verification comparison
+        run: |
+          python -m tccn_va_rto.airfogsim_live \
+            --airfogsim-root '${{ runner.temp }}/airfogsim' \
+            --steps 80 --seeds 3 --out results/airfogsim_live_paired
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: airfogsim-live-paired
+          path: research/tccn_va_rto/results/airfogsim_live_paired/

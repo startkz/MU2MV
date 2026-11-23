@@ -6,11 +6,9 @@
 
 - `tccn_va_rto/core.py`: seeded stochastic UAV–vehicle scenario (reflecting road mobility, 3D distance, contact-window first-exit prediction, Shannon-inspired TDMA airtime, real task queues), hidden vehicle correctness probabilities, possibly inflated reported reputations, authenticated challenge-response observations with communication/CPU/energy overhead, Bayesian Beta posteriors, and execution outcomes hidden from the scheduler unless a challenge yields feedback.
 - `DistributionalDP`: small-batch resource-constrained **loss-PMF propagation + CVaR**; FSD frontier pruning only among identical resource-usage states; explicit risk-infeasible fallback. Independent per-task failures are an assumption, not a theorem about the radio environment.
-- `va_rto`: a slow controller that assigns per-vehicle verification quotas every `slow_period` slots (using posterior uncertainty, reported reputation disagreement, and predicted contact opportunities); fast stage evaluates verification versus no verification using a one-step information-gain proxy, then optimizes the task batch after observing the verification result. One challenge per slot, no more than `max_verifications_per_epoch` per slow epoch.
+- `va_rto`: a slow verification-budget controller updated every `slow_period` slots; fast stage evaluates verification versus no verification using a one-step information-gain proxy, then optimizes the task batch after observing the verification result. One challenge per slot, no more than `max_verifications_per_epoch` per slow epoch.
 - Fairly evaluated candidate methods on identical generated workloads and keyed exogenous randomness: `ddp`, `neutral`, `random_verify`, `va_rto`, and `oracle` (uses hidden truth only as a **diagnostic upper-bound reference**, not a deployable approach).
 - `tccn_va_rto/airfogsim_trace.py`: **trace integration** with the upstream AirFogSim APIs (`getVehicleTrafficInfos`, `getUAVTrafficInfos`, `getAllToOffloadTaskInfos`). Can capture AirFogSim/SUMO task and position streams and replay them with the separately injected hidden-service process. It is **not** a live policy plugin and has not been end-to-end executed with SUMO in this environment.
-
-For formal assumptions, decision timing, posterior-update equations, pseudocode and the evidence contract, see [`FORMULATION_AND_ALGORITHM.md`](FORMULATION_AND_ALGORITHM.md). For the results-pending manuscript outline, see [`PAPER_TCCN_PLAN.md`](PAPER_TCCN_PLAN.md).
 
 ## References / boundaries
 
@@ -62,3 +60,7 @@ The replay assumes AirFogSim `task_size` is MB (converted to Mbits) and `task_cp
 3. Replace independent link failures with measured/trace-driven temporal fading, calibration error and correlated outages; expand to multi-UAV interference.
 4. Profile scalability and decision wall-time. Report paired seeds, confidence intervals, ablations, calibration and sensitivity to verification budget, priors, mobility and risk thresholds.
 5. Freeze one version and use unseen seeds/maps. Only then move verified statistics into the paper.
+
+## Live AirFogSim verification experiments
+
+The `tccn_va_rto/airfogsim_live.py` entrypoint and [LIVE_AIRFOGSIM_VALIDATION.md](LIVE_AIRFOGSIM_VALIDATION.md) describe the **native AirFogSim TaskManager/RB/CPU** integration and the paired VA-RTO-vs-random verification-cost audit. The live experiment has the fixed upstream version and its own GitHub Actions job; do not conflate it with standalone DDP or trace replay results.
