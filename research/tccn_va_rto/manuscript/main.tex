@@ -1,0 +1,190 @@
+\documentclass[journal]{IEEEtran}
+\usepackage{amsmath,amssymb,amsfonts,mathtools}
+\usepackage{algorithm,algorithmic}
+\usepackage{booktabs}
+\usepackage{cite}
+\usepackage{url}
+\usepackage{array}
+\interdisplaylinepenalty=2500
+\newcommand{\EE}{\mathbb E}
+\newcommand{\Prob}{\mathbb P}
+\newcommand{\VV}{\mathcal V}
+\newcommand{\TT}{\mathcal T}
+\newcommand{\HH}{\mathcal H}
+\newcommand{\Loss}{\mathcal L}
+\newcommand{\RISK}{\mathcal R}
+\newcommand{\CVaR}{\operatorname{CVaR}}
+
+\title{Verification-Aware Risk-Constrained Two-Timescale Task Offloading in Dynamic UAV--Vehicular Fog Networks}
+\author{Anonymous Authors% Authors and affiliations to be supplied for submission.
+\thanks{Research-stage manuscript: the experimental results and hardware validation required for journal submission have not yet been completed.}}
+\begin{document}
+\maketitle
+\begin{abstract}
+Unmanned aerial vehicles (UAVs) can offload delay-sensitive sensing and inference tasks to nearby vehicular fog computing nodes (VFCNs), but three interacting sources of uncertainty complicate reliable scheduling: a VFCN's actual service correctness is not directly observable, reported reputation may be misleading, and UAV--vehicle contact duration changes with mobility. Existing risk-aware offloading formulations typically treat service or link reliability as a known input, whereas passive trust updating does not account for the communication and computation consumed by obtaining trustworthy evidence. This paper formulates verification-aware risk-constrained offloading in which a challenge is a resource-consuming decision that may improve subsequent service-reliability estimates. We design a two-timescale architecture: a slow controller allocates verification opportunities using belief uncertainty and predicted contacts; a fast controller evaluates challenge outcomes, reserves challenge resources, and applies distributional dynamic programming to the remaining tasks under a conditional-value-at-risk constraint. The current implementation provides a reproducible stochastic reference simulator, a preliminary AirFogSim trace interface, and benchmark-oriented tests. This manuscript specifies the proposed model and algorithm; statistically validated AirFogSim/SUMO and hardware results are required before empirical performance claims can be made.
+\end{abstract}
+\begin{IEEEkeywords}
+UAV-assisted vehicular fog computing, task offloading, active verification, risk-aware scheduling, conditional value at risk, two-timescale control.
+\end{IEEEkeywords}
+
+\section{Introduction}
+UAV-assisted mobile computing can extend sensing and computation into locations where fixed infrastructure is unavailable. Vehicular fog nodes can provide additional computation along a UAV's route, but their usefulness depends on both intermittent wireless access and the correctness of remotely executed tasks. A node with high nominal computation capacity may depart before a result is returned; conversely, a node advertised as reputable may repeatedly supply incorrect computation results. Thus, nominal throughput or mean delay alone is not sufficient to characterize useful offloading.
+
+Recent simulation platforms such as AirFogSim support heterogeneous aerial--ground mobility, task generation, wireless channels, and resource scheduling~\cite{wei2026airfogsim}. Distributional dynamic programming (DDP) has also been developed for task offloading across unreliable edge networks with conditional-value-at-risk (CVaR) constraints~\cite{lin2026ddp}. The starting point of this work is a distinction between \emph{unknown} service reliability and \emph{known} random link failure: a scheduler cannot apply a reliable risk bound when its input probabilities originate from unverified historical reputation. Moreover, actively gathering evidence consumes the same contact time, radio capacity, and computation needed for urgent tasks.
+
+We therefore study the following question: \emph{How should a UAV jointly select verification actions and deadline-constrained offloading targets when VFCN service reliability is only partially observed, reputations may be misleading, and mobility limits contact windows?} Our architectural proposal makes three contributions that require empirical and theoretical validation: (i) a partially observed service-integrity and contact-constrained task model, (ii) a resource-accounted active verification mechanism coupled to distributional loss optimization, and (iii) a genuinely periodic two-timescale controller with separate verification quotas and per-slot task decisions. Unlike a collection of independent trust, learning, and economic modules, each component enters the same resource and risk accounting.
+
+The remainder of this research-stage manuscript describes the model, a concrete reference algorithm, its conditional properties, and the evaluation protocol. It does not claim that the candidate has already outperformed published methods.
+
+\section{Related Work and Research Position}
+\subsection{UAV--VFCN simulation and task scheduling}
+AirFogSim~\cite{wei2026airfogsim} provides a modular interface for UAV and vehicle mobility, computation tasks, communication, and scheduler control. We adopt its interface and task model as an integration target. In the first development implementation, mobility and task traces may be recorded from AirFogSim and replayed in a separate reference model, while the live AirFogSim scheduling and channel hooks still require integration and validation. Consequently, a trace-based experiment cannot be described as a complete native AirFogSim run.
+
+\subsection{Distributional and risk-aware offloading}
+Lin \emph{et al.}~\cite{lin2026ddp} propose distributional dynamic programming for unreliable edge offloading using a loss distribution and CVaR criterion. Their work provides the methodological baseline rather than a mechanism for verifying an unknown VFCN integrity parameter. The distinguishing variable in our formulation is an explicit verification decision that consumes channel and processor resources and can change the posterior distribution used for subsequent offloading.
+
+\subsection{Active trust estimation versus passive reputation}
+A historical reputation score is not a ground-truth probability of task integrity, particularly when reports are strategically biased or suffer distribution shift. We use an authenticated binary challenge as an explicitly priced information-acquisition action. The initial Bayesian model assumes exchangeable challenge results; adversaries that detect and selectively answer challenges, or alter the verifier itself, are outside the present guarantee scope. These cases must be evaluated separately before claiming adversarial robustness.
+
+\section{System Model and Problem Formulation}
+\subsection{Mobility, tasks, and end-to-end service}
+Let $\VV_t$ denote the set of available VFCNs within the vicinity of a UAV at slot $t$. Task $i\in\TT_t$ has arrival $a_i$, input data $b_i$ [Mbit], returned data $b_i^r$ [Mbit], required cycles $c_i$ [Gcycle], deadline $d_i$ [s] measured from arrival, and priority weight $w_i$. It can be executed locally ($j=-1$), remotely ($j\in\VV_t$), or explicitly dropped ($j=-2$). Binary assignment variables $x_{ij}$ satisfy
+\begin{equation}\label{eq:assignment}
+ \sum_{j\in\VV_t\cup\{-1,-2\}}x_{ij}=1,\qquad x_{ij}\in\{0,1\}.
+\end{equation}
+For a vehicle $j$, let $r_{uj}(t)$ denote the estimated wireless data rate, $f_j$ the compute rate, $B_j(t)$ the predicted processor busy-until time, and $W_{uj}(t)$ the remaining continuous UAV--vehicle contact duration. The modeled remote completion time, measured from task arrival, is
+\begin{align}\label{eq:delay}
+ T_{ij}(t)&=t-a_i+\max\left\{\frac{b_i}{r_{uj}(t)},[B_j(t)-t]_+\right\}\nonumber\\
+ &\quad+\frac{c_i}{f_j}+\frac{b_i^r}{r_{uj}(t)}.
+\end{align}
+The selected remote task must satisfy $T_{ij}(t)\le d_i$, and the duration after assignment must not exceed $W_{uj}(t)$. The prototype assumes one continuous direct contact for upload, computation, and return, and at most one new task per processing node per slot; more general multi-hop and multi-UAV service chains remain outside this implementation. A local task has its own corresponding busy-time and energy accounting. Dropping a task incurs deterministic lost priority weight, rather than falsely appearing as a zero-cost optimizer solution.
+
+\subsection{Latent service correctness and challenge observations}
+Each VFCN has a latent service-correctness parameter $\theta_j\in[0,1]$. Let $r_j^{\rm rep}$ be a possibly misleading self-reported reputation. The observable history $\HH_t$ consists of task/resource information and usable authenticated challenge outcomes, not $\theta_j$. A reference estimator assigns
+\begin{equation}\label{eq:beta}
+ \theta_j\mid\HH_t\sim\operatorname{Beta}(\alpha_{jt},\beta_{jt}),\quad
+ \widehat\theta_{jt}=\frac{\alpha_{jt}}{\alpha_{jt}+\beta_{jt}}.
+\end{equation}
+A challenge may report a verified success $z_{jt}=1$, a verified failure $z_{jt}=0$, or no observation $z_{jt}=\bot$ when communication fails. If $z_{jt}\ne\bot$,
+\begin{equation}\label{eq:update}
+ (\alpha_{j,t+1},\beta_{j,t+1})=(\alpha_{jt}+z_{jt},\beta_{jt}+1-z_{jt});
+\end{equation}
+otherwise the posterior is unchanged. This update presumes conditional exchangeability of task and challenge results; challenge-aware selective attacks would violate that assumption.
+
+\subsection{Verification consumes network and computing resources}
+Let $y_{jt}\in\{0,1\}$ indicate a verification challenge of VFCN $j$ in slot $t$. Its airtime $A_j^{\rm ver}$, processor demand $C_j^{\rm ver}$, and energy $E_j^{\rm ver}$ are all nonzero. If $A_t$ is the available TDMA airtime, a necessary capacity constraint is
+\begin{equation}\label{eq:air}
+ \sum_{i,j}x_{ij}A_{ij}^{\rm task}+\sum_j y_{jt}A_j^{\rm ver}\le A_t.
+\end{equation}
+Challenges also advance the selected VFCN's busy-until time and therefore may make otherwise feasible offloaded tasks miss their nominal deadlines. Define slow epochs $\mathcal E_k=\{kL,\ldots,(k+1)L-1\}$, where $L$ is an explicit positive integer. Each epoch permits at most $B_k$ challenges:
+\begin{equation}\label{eq:epoch}
+ \sum_{t\in\mathcal E_k}\sum_j y_{jt}\le B_k,\qquad
+ \sum_j y_{jt}\le1.
+\end{equation}
+
+\subsection{Risk-constrained decision problem}
+Under a conditional-independent Bernoulli reference model, the completion probability of a feasible remote option is approximated by $p_{ij}=\widehat\theta_{jt}\,p_{uj}^{\rm link}(t)$, where $p_{uj}^{\rm link}(t)$ is the estimated link success probability. Let $S_i\in\{0,1\}$ indicate actual correct, on-time completion. The aggregate weighted loss in a batch is
+\begin{equation}\label{eq:loss}
+ \Loss_t=\sum_{i\in\TT_t}w_i(1-S_i).
+\end{equation}
+Our development objective maximizes conditional expected value less latency, energy, and verification costs, subject to assignment/resource constraints and
+\begin{equation}\label{eq:cvarbound}
+ \CVaR_{\beta}(\Loss_t\mid\HH_t)\le \RISK_t,
+\end{equation}
+where, for loss distribution $F$,
+\begin{equation}\label{eq:cvar}
+ \CVaR_\beta(\Loss)=\min_{\eta\in\mathbb R}
+ \left\{\eta+\frac{\EE[(\Loss-\eta)_+]}{1-\beta}\right\}.
+\end{equation}
+Equation~\eqref{eq:cvarbound} is a \emph{modeled conditional constraint}, not a guarantee on real systems when reliability probabilities are miscalibrated. CVaR on aggregate lost value is not equivalent to a per-task probabilistic deadline guarantee. We explicitly record infeasibility when no candidate satisfies the risk budget.
+
+\section{Verification-Aware Two-Timescale Controller}
+\subsection{Slow verification-budget allocation}
+At slots $t=kL$, and not at intermediate slots, the slow controller selects verification quotas $q_j^k\ge0$ with $\sum_jq_j^k\le B_k$. The implemented heuristic scores nodes according to current posterior uncertainty, reputation disagreement, and predicted contact availability. For $o_j^k$ predicted useful contact slots in the upcoming epoch, define
+\begin{equation}\label{eq:score}
+ s_j^k=\operatorname{Var}(\theta_j\mid\HH_t)
+ (1+2|\widehat\theta_{jt}-r_j^{\rm rep}|)
+ (0.25+0.75\,o_j^k/L).
+\end{equation}
+A quota is allocated greedily to eligible nodes, penalizing repeated allocations in proportion to the predicted opportunities. This is a reproducible \emph{slow-horizon heuristic}, not the exact solution of a partially observable Markov decision process.
+
+\subsection{Fast challenge valuation and distributional scheduling}
+Given a task batch and current posterior, distributional dynamic programming (DDP) enumerates feasible local, remote, and drop options. Each option has a weighted Bernoulli loss PMF
+\begin{equation}\label{eq:pmf}
+ \Prob(X_i=0)=p_i,\qquad \Prob(X_i=w_i)=1-p_i.
+\end{equation}
+The PMF of cumulative loss is propagated by convolution. For a given TDMA-consumption and processor-usage state, the solver retains assignments with nondominated expected utility and loss distributions. The following conditional property justifies pruning.
+
+\textbf{Lemma 1 (Conditional frontier dominance):} \emph{Suppose two partial assignments use the same available future resource state and have cumulative losses $L_A$ and $L_B$. If $L_A$ first-order stochastically dominates $L_B$ in the lower-loss direction, and assignment $A$ has no smaller utility, then under identical independent future losses, $B$ cannot yield a strictly better expected-utility and CVaR-feasible completion.}
+
+\emph{Proof:} Lower-loss first-order dominance is preserved by convolution with the same independent future random variable. Since CVaR is monotone under first-order stochastic dominance, the completed candidate descended from $A$ has no larger CVaR than the corresponding candidate descended from $B$. The cumulative utility remains no smaller under the common continuation. Thus $B$ is unnecessary within that resource state. $\square$
+
+Before dispatch, the fast controller considers a single challenge for each currently available node with positive quota. It solves a provisional no-challenge DDP and, for each candidate $j$, recomputes DDP for the three possible post-challenge observations ($z\in\{0,1,\bot\}$), accounting for reduced airtime and available processor time. The estimated value of testing $j$ is
+\begin{align}\label{eq:voi}
+ \widehat{\mathrm{VOI}}_j&=\sum_z\Prob(z\mid\HH_t)J_t^\star(\HH_t\oplus z,
+ A_t-A_j^{\rm ver})\nonumber\\
+ &\quad-J_t^\star(\HH_t,A_t)-c_j^{\rm ver}
+ +\lambda\widehat{\Delta I}_j,
+\end{align}
+where $\widehat{\Delta I}_j$ is a posterior-variance reduction proxy and $J_t^\star$ denotes the DDP result under its stated model. The proxy is not an exact continuation value. The system challenges the maximizer only when the estimated value is positive, receives the outcome if delivered, updates the posterior, and \emph{then re-solves} DDP using the remaining resources. This ordering makes the cost of verification operative, not decorative.
+
+\begin{algorithm}[t]
+\caption{VA-RTO: periodic quotas and per-slot challenge-aware DDP}
+\label{alg:varto}
+\begin{algorithmic}[1]
+\STATE Initialize priors, vehicle busy times and risk configuration.
+\FOR{each fast slot $t$}
+ \IF{$t\bmod L=0$}
+   \STATE Allocate epoch quotas $q_j^k$ using~\eqref{eq:score}.
+ \ENDIF
+ \STATE Obtain the observable task batch and predicted contacts.
+ \STATE Solve baseline DDP without challenge.
+ \FOR{each available $j$ with $q_j^k>0$}
+   \STATE Estimate the three-outcome value~\eqref{eq:voi}.
+ \ENDFOR
+ \IF{the maximum estimated verification value is positive}
+    \STATE Reserve challenge airtime/CPU; decrement $q_j^k$.
+    \STATE Execute challenge; update posterior if response is usable.
+ \ENDIF
+ \STATE Re-solve risk-aware DDP with remaining resources.
+ \STATE Dispatch/drop/local-execute decisions; record actual outcomes.
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Implementation assumptions and limitations}
+The current reference implementation is single-UAV, uses a reflecting-road vehicle mobility process, assumes conditional independence of task outcomes, and applies a simple rate and link-loss approximation. Although AirFogSim traces can replace the mobility and task arrivals, the trace bridge does not carry over the platform's full PHY/MAC behavior or perform native challenge execution. The posterior is updated by verifiable challenges only; ordinary unverified completion is not mistaken for trusted evidence. There is no claim of global joint optimality, generic neural-network convergence, or unconditional security against adaptive attacks.
+
+\section{Reproducibility and Evaluation Protocol}
+\subsection{Implementation status}
+An executable, seeded research prototype and tests are maintained in an isolated research branch of the MU2MV codebase. The prototype writes task-level decisions, realized correctness/deadline outcomes, verification resource usage, risk infeasibility, and configuration manifests. Development smoke tests verify execution and invariants, but do not establish the method's superiority. A native AirFogSim/SUMO execution and independently frozen final evaluations remain to be completed.
+
+\subsection{Planned controlled comparisons}
+\begin{table}[t]
+\caption{Evidence required before a TCCN experimental claim (not completed results).}
+\label{tab:protocol}
+\centering
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{p{.20\columnwidth}p{.72\columnwidth}}
+\toprule
+Study & Scientific discriminator \\
+\midrule
+Matched budget & VA-RTO versus random verification at identical challenge airtime/CPU and the DDP baseline. \\
+Tail risk & Conditional loss CVaR, realized weighted loss, deadline failures, probability calibration. \\
+Contact dynamics & Different speed/contact-window distributions, outages, return payload sizes and UAV trajectories. \\
+Timescales & Compare $L=1$ with genuine $L>1$ and fixed quota policies. \\
+Mechanism ablation & Remove prior-disagreement term, information term, risk constraint and verification. \\
+Platform validity & AirFogSim/SUMO native execution, task integrity ground truth and realistic PHY/CPU settings. \\
+\bottomrule
+\end{tabular}
+\end{table}
+The experiment protocol will use paired independent seeds, frozen method versions, identical workloads, uncertainty intervals, and independent held-out scenarios. Exact small-batch enumeration can be used to check solver correctness, while published DDP settings and strong recent alternatives must be reproduced rather than approximated by mislabeled surrogates.
+
+\section{Conclusion}
+We formulated active result verification as a resource-consuming network decision coupled to UAV--vehicular-fog offloading under uncertain service integrity and mobile contact windows. A two-timescale reference design separates periodic verification quota allocation from per-slot posterior updates and distributional risk-constrained task assignment. The algorithm and its current limits are directly executable and auditable. Claims concerning robust comparative improvement, calibrated risk guarantees, or native AirFogSim/SUMO performance remain open until full controlled experiments and appropriate analysis have been completed.
+
+\begin{thebibliography}{2}
+\bibitem{wei2026airfogsim} Z. Wei, B. Li, R. Zhang, X. Cheng, and L. Yang, ``AirFogSim: A Light-Weight and Modular Simulator for UAV-Integrated Vehicular Fog Computing,'' \emph{IEEE Transactions on Mobile Computing}, 2026. [Online]. Available: \url{https://arxiv.org/abs/2409.02518}.
+\bibitem{lin2026ddp} X. Lin \emph{et al.}, ``Task Offloading across Unreliable Edge Networks via Distributional Dynamic Programming,'' in \emph{Proc. IEEE INFOCOM Workshops (ISAC-FutureG)}, 2026, doi: 10.1109/INFOCOM59046.2026.11571468.
+\end{thebibliography}
+\end{document}
