@@ -68,3 +68,8 @@ PYTHONPATH="$PWD:$HOME/AirFogSim" python -m tccn_va_rto.airfogsim_live \
 All paper-facing results need additional seeds, channel-model parameter checks,
 external mobility scenarios, nontrivial risk-budget sensitivity and independent
 confirmation. Results from these small engineering cases are not paper claims.
+## 20-seed native run and executable statistics
+
+Run `python -m tccn_va_rto.analyze_live results/airfogsim_live_paired` after the upstream simulation to generate `paired_stats.json`. The paired unit of inference is one complete seed scenario; *never* treat individual tasks or TTIs as independent samples.
+
+A completed validation task is accepted in the audit only if it records real uplink RB activity, positive CPU execution, and downlink RB activity. `verification_stage_audit.csv` and `paired_stats.json` are captured in the workflow artifact. Source-based, external service-correctness generation is explicitly distinct from real-world service-integrity ground truth. This native experiment compares the **verification target selector** with a random selector and is not a complete online DDP/POMDP proof. The 20 seeds are development evidence, not an independent held-out evaluation.

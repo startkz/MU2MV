@@ -22,6 +22,7 @@ jobs:
         run: |
           cd research/tccn_va_rto
           PYTHONPATH="$PWD:/tmp/airfogsim" python -m tccn_va_rto.airfogsim_live --airfogsim-root /tmp/airfogsim --steps 80 --seeds 20 --out results/airfogsim_live_paired
+          python -m tccn_va_rto.analyze_live results/airfogsim_live_paired
       - uses: actions/upload-artifact@v4
         if: always()
         with:
