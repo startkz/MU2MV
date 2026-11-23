@@ -175,6 +175,8 @@ class AirFogSimLiveAdapter:
 
     def schedule_tti(self,slot:int):
         self._slot=slot
+        # AirFogSim.clearDecisions resets alloc_cpu_callback every TTI.
+        self.compsched.setComputingCallBack(self.env,self.allocate_cpu)
         self.prepare_returns()
         pending=self._all_transmitting()
         r=self._reservation()
