@@ -223,17 +223,45 @@ class Experiment:
         self.busy={}
         self.beliefs={v.vid:Belief(1+c.prior_strength*v.reported_reputation,1+c.prior_strength*(1-v.reported_reputation),v.reported_reputation) for v in self.world.vehicles}
         self.epoch_left=0
+        self.epoch_quotas:dict[int,int]={}
+        self.epoch_target_history:list[tuple[int,dict[int,int]]]=[]
         self.slow_updates=0
         self.verifications=0
         self.invalid_risk_slots=0
         self.total_frontier=0
         self.records=[]
-    def slow_update(self):
+    def slow_update(self,t:float):
+        """Slow controller selects verifiable nodes and assigns epoch quotas.
+
+        Uses observable posterior variance, disagreement with reported reputation,
+        and predicted contact opportunities over the next L slots. It DOES NOT
+        use hidden service probabilities. Quotas persist until the next epoch.
+        """
+        c=self.c
         self.slow_updates+=1
-        self.epoch_left=self.c.max_verifications_per_epoch
+        self.epoch_left=c.max_verifications_per_epoch
+        scores=[]
+        for v in self.world.vehicles:
+            b=self.beliefs[v.vid]
+            opportunities=sum(self.world.contact(v,t+i*c.slot_s)>1.0
+                              for i in range(c.slow_period))
+            if opportunities==0:continue
+            disagreement=abs(b.mean-v.reported_reputation)
+            score=b.variance*(1+2*disagreement)*(0.25+0.75*opportunities/c.slow_period)
+            scores.append((score,v.vid,opportunities))
+        scores.sort(reverse=True)
+        self.epoch_quotas={v.vid:0 for v in self.world.vehicles}
+        # Give at most one quota at a time, allowing repeated challenges if
+        # the epoch budget exceeds the number of eligible vehicles.
+        for _ in range(c.max_verifications_per_epoch):
+            if not scores:break
+            _,vid,opportunities=min(scores,key=lambda z:(self.epoch_quotas[z[1]]/z[2]-z[0],z[1]))
+            self.epoch_quotas[vid]+=1
+        self.epoch_target_history.append((self.slow_updates,dict(self.epoch_quotas)))
     def verify(self,vid:int,t:float):
         v=self.world.vehicles[vid]
         self.epoch_left-=1
+        self.epoch_quotas[vid]-=1
         self.verifications+=1
         self.busy[vid]=max(t,self.busy.get(vid,t))+self.c.verification_cpu_gc/v.cpu_gcps
         if draw(self.seed,'vlink',t,vid)>=self.world.p_link(v,t):return None
@@ -242,7 +270,8 @@ class Experiment:
         return valid
     def verification_choice(self,batch:list[Task],t:float):
         if self.method not in ('va_rto','random_verify') or self.epoch_left==0:return None
-        candidates=[v for v in self.world.vehicles if self.world.contact(v,t)>1]
+        candidates=[v for v in self.world.vehicles if self.epoch_quotas.get(v.vid,0)>0
+                    and self.world.contact(v,t)>1]
         if not candidates:return None
         if self.method=='random_verify':
             return candidates[int(draw(self.seed,'random-verify',t)*len(candidates))].vid
@@ -272,7 +301,7 @@ class Experiment:
         c=self.c
         for slot,batch in enumerate(self.world.batches):
             now=slot*c.slot_s
-            if slot%c.slow_period==0:self.slow_update()
+            if slot%c.slow_period==0:self.slow_update(now)
             vid=self.verification_choice(batch,now)
             signal=None
             if vid is not None:signal=self.verify(vid,now)
@@ -311,7 +340,8 @@ class Experiment:
             'verifications':self.verifications,'verify_airtime_s':self.verifications*c.verification_airtime_s,
             'verify_cpu_gc':self.verifications*c.verification_cpu_gc,
             'risk_infeasible_slots':self.invalid_risk_slots,'slow_updates':self.slow_updates,
-            'mean_frontier_size':self.total_frontier/c.steps}
+            'mean_frontier_size':self.total_frontier/c.steps,
+            'slow_budget_targets':len({v for _,quota in self.epoch_target_history for v,n in quota.items() if n>0})}
 
 def campaign(c:Config,seeds:list[int],methods:list[str],out:Path,trace:Path|None=None):
     out.mkdir(parents=True,exist_ok=True)
