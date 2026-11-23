@@ -1,0 +1,27 @@
+name: TCCN VA-RTO prototype tests
+on:
+  push:
+    branches: [research/tccn-va-rto]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: research/tccn_va_rto
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Unit tests
+        run: python -m unittest discover -s tccn_va_rto -t . -v
+      - name: Small reproducible smoke campaign
+        run: python -m tccn_va_rto.core --steps 12 --seeds 2 --out results/va_rto_smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: va-rto-smoke
+          path: research/tccn_va_rto/results/va_rto_smoke/
