@@ -18,6 +18,7 @@ class MockTask:
     def getTaskId(self):return self.id
     def getTaskCPU(self):return self.data['task_cpu']
     def getComputedSize(self):return self.computed
+    def isReturning(self):return False
 
 
 class MockManager:
@@ -97,6 +98,7 @@ class LiveAdapterTests(unittest.TestCase):
         self.assertEqual(len(allocated['WORK_0']),11)
         self.assertFalse(set(allocated['WORK_0']) & set(allocated['VA_VERIFY_0_vehicle_0']))
         self.assertEqual(a.total_reserved_rb_tti,5)
+        self.assertEqual(a.reservations['VA_VERIFY_0_vehicle_0'].upload_tti,1)
         self.assertEqual(e.activated_offloading_tasks_with_RB_Nos,allocated)
 
     def test_verification_reduces_cpu_for_other_jobs(self):
@@ -110,6 +112,7 @@ class LiveAdapterTests(unittest.TestCase):
         self.assertAlmostEqual(allocated[task.getTaskId()],1.0)
         self.assertAlmostEqual(allocated['WORK_0'],1.2)
         self.assertAlmostEqual(a.total_verify_cpu_gc,.1)
+        self.assertEqual(a.reservations[task.getTaskId()].compute_tti,1)
 
     def test_fixed_reservation_even_when_challenge_finishes_early(self):
         a,e=self.get_adapter()

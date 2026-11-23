@@ -61,6 +61,9 @@ class Reservation:
     verify_cpu_gc: float = 0.0
     rb_active: int = 0
     rb_reserved: int = 0
+    upload_tti: int = 0
+    compute_tti: int = 0
+    return_tti: int = 0
     status: str = 'pending'
 
 
@@ -157,6 +160,8 @@ class AirFogSimLiveAdapter:
                 actual=min(challenge[0].getTaskCPU()-challenge[0].getComputedSize(),reserve*c.tti_s)
                 self.total_verify_cpu_gc+=max(0.,actual)
                 reservation.verify_cpu_gc+=max(0.,actual)
+                if actual > 0:
+                    reservation.compute_tti += 1
             available=max(0.0,cap-reserve)
             for task in ordinary:
                 out[task.getTaskId()]=available/len(ordinary)
@@ -203,6 +208,10 @@ class AirFogSimLiveAdapter:
             if challenge:
                 self.total_used_rb_tti+=reserve_rb
                 r.rb_active+=reserve_rb
+                if pending[verify_id].isReturning():
+                    r.return_tti += 1
+                else:
+                    r.upload_tti += 1
         for tid,rbs in allocations.items():
             self.commsched.setCommunicationWithRB(self.env,tid,rbs)
         self.telemetry.append({'slot':slot,'sim_time':self.env.simulation_time,
@@ -285,6 +294,9 @@ def create_fixtures(out:Path,c:LiveConfig,seed:int,upstream:Path):
     config['mission']['generation_model_args']['Poisson']['lambda']=0
     config['fog_profile']['vehicle']['cpu']=2.2
     config['fog_profile']['uav']['cpu']=2.3
+    # Disable unrelated upstream authentication attack injection.
+    # Service correctness is injected separately with hidden keyed draws.
+    config['authentication']={'malicious_ratio':0.0}
     path=out/'config.yaml'
     path.write_text(yaml.safe_dump(config,sort_keys=False),encoding='utf8')
     return path
@@ -406,6 +418,14 @@ def run_live_case(method:str,seed:int,c:LiveConfig,upstream:Path,out:Path):
             'verify_cpu_executed_gc':round(adapter.total_verify_cpu_gc,8),
             'slow_epochs':slow_epochs,
             '_workload':outcome_records,'_radio':adapter.telemetry,'_verify':checks,
+            '_verify_stages':[{
+                'seed':seed,'method':method,'task_id':r.task_id,'target':r.vehicle,
+                'status':adapter.task_state(r.task_id),
+                'upload_tti':r.upload_tti,'compute_tti':r.compute_tti,
+                'return_tti':r.return_tti,'rb_reserved_tti':r.rb_reserved,
+                'rb_active_tti':r.rb_active,
+                'cpu_executed_gc':round(r.verify_cpu_gc,8),
+            } for r in adapter.reservations.values()],
         }
     finally:
         env.close()
@@ -413,13 +433,14 @@ def run_live_case(method:str,seed:int,c:LiveConfig,upstream:Path,out:Path):
 
 def paired_live_campaign(c:LiveConfig,seeds:list[int],upstream:Path,out:Path):
     out.mkdir(parents=True,exist_ok=True)
-    summaries=[];work=[];radio=[];verification=[]
+    summaries=[];work=[];radio=[];verification=[];stages=[]
     for seed in seeds:
         for method in ('va_rto','random_verify'):
             row=run_live_case(method,seed,c,upstream,out)
             work.extend(row.pop('_workload'))
             radio.extend([dict(seed=seed,method=method,**x) for x in row.pop('_radio')])
             verification.extend(row.pop('_verify'))
+            stages.extend(row.pop('_verify_stages'))
             summaries.append(row)
     def write(name,rows):
         if not rows:return
@@ -427,6 +448,13 @@ def paired_live_campaign(c:LiveConfig,seeds:list[int],upstream:Path,out:Path):
             writer=csv.DictWriter(f,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
     write('summary.csv',summaries);write('task_records.csv',work)
     write('radio_cpu_tti.csv',radio);write('verification_requests.csv',verification)
+    write('verification_stage_audit.csv',stages)
+    # A completed challenge must have consumed all three native stages.
+    for stage in stages:
+        if stage['status']=='done':
+            for k in ('upload_tti','compute_tti','return_tti','rb_active_tti','cpu_executed_gc'):
+                if stage[k]<=0:
+                    raise AssertionError(f"verification {stage['task_id']} completed without native {k}")
     # Invariant for strict matched offered resources; completed services may differ.
     for seed in seeds:
         a,b=[z for z in summaries if z['seed']==seed]
@@ -435,7 +463,8 @@ def paired_live_campaign(c:LiveConfig,seeds:list[int],upstream:Path,out:Path):
     meta={'engine':'real upstream AirFogSimEnv (traffic_mode=real, mobility CSV)',
           'basis':'full upstream radio and CPU/task progression; stochastic service-integrity injection',
           'upstream':str(upstream),'config':vars(c),'seeds':seeds,
-          'method_comparison':'matched verification attempts and reserved RB/CPU budgets, NOT equal realized throughput',
+          'method_comparison':'matched verification attempts and reserved RB/CPU budgets, NOT necessarily equal realized throughput',
+          'assurance':'Each completed verification must show native uplink, CPU service and return stage activity',
           'scientific_status':'engineering integration; not final TCCN experiment'}
     (out/'manifest.json').write_text(json.dumps(meta,indent=2),encoding='utf8')
     for m in ('va_rto','random_verify'):
