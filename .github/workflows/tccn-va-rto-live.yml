@@ -13,7 +13,7 @@ jobs:
           python-version: '3.11'
       - name: Install AirFogSim CPU dependencies
         run: |
-          python -m pip install 'numpy==1.26.4' 'pandas==2.2.2' 'PyYAML>=6,<7' 'sumolib==1.20.0' 'traci==1.20.0' 'networkx>=3.2,<4' 'matplotlib>=3.7,<4' 'pillow>=10,<12' 'shapely>=2,<3' 'osmnx==1.9.4' 'tqdm>=4,<5' 'scipy>=1.11,<2'
+          python -m pip install 'numpy==1.26.4' 'pandas==2.2.2' 'PyYAML>=6,<7' 'sumolib==1.20.0' 'traci==1.20.0' 'networkx>=3.2,<4' 'matplotlib>=3.7,<4' 'pillow>=10,<12' 'shapely>=2,<3' 'osmnx==1.9.4' 'tqdm>=4,<5' 'scipy>=1.11,<2' 'sympy>=1.12,<2'
       - name: Checkout pinned upstream simulator
         run: |
           git clone https://github.com/ZhiweiWei-NAMI/AirFogSim.git /tmp/airfogsim
