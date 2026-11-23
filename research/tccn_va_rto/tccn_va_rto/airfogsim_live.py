@@ -340,6 +340,11 @@ def run_live_case(method:str,seed:int,c:LiveConfig,upstream:Path,out:Path):
     config_file=create_fixtures(fixture,c,seed,upstream)
     import yaml
     env=AirFogSimEnv(yaml.safe_load(config_file.read_text()),interactive_mode=None)
+    # Upstream 76c0edb4 _updateStorage iterates .items() on a list returned
+    # by TaskManager.getDoneTasks(). Storage is unused in this experiment;
+    # disable ONLY the unrelated, broken storage stage (radio/CPU stay native).
+    if not env.config.get('storage',{}).get('capacity_bytes'):
+        env._updateStorage=lambda: None
     adapter=AirFogSimLiveAdapter(env,c)
     beliefs={f'vehicle_{i}':Belief(1+c.prior_strength*(.96 if i<2 else hidden_probability(i)),
                  1+c.prior_strength*(1-(.96 if i<2 else hidden_probability(i))),.96 if i<2 else hidden_probability(i))
