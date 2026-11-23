@@ -1,2 +1,1 @@
-"""VA-RTO standalone reference environment and distributional solver."""
-from .core import Config, World, Experiment, DistributionalDP, campaign
+"""VA-RTO independent research simulator; import submodules explicitly."""
