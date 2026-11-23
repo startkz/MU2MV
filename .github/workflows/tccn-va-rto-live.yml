@@ -1,0 +1,29 @@
+name: TCCN VA-RTO live AirFogSim paired verification
+on:
+  push:
+    branches: [research/tccn-va-rto]
+  workflow_dispatch:
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install AirFogSim CPU dependencies
+        run: |
+          python -m pip install 'numpy==1.26.4' 'pandas==2.2.2' 'PyYAML>=6,<7' 'sumolib==1.20.0' 'traci==1.20.0' 'networkx>=3.2,<4' 'matplotlib>=3.7,<4' 'pillow>=10,<12' 'shapely>=2,<3' 'osmnx==1.9.4' 'tqdm>=4,<5' 'scipy>=1.11,<2'
+      - name: Checkout pinned upstream simulator
+        run: |
+          git clone https://github.com/ZhiweiWei-NAMI/AirFogSim.git /tmp/airfogsim
+          git -C /tmp/airfogsim checkout 76c0edb4ac6c7b5e09cc146db9928c1bc64bbb60
+      - name: Run actual AirFogSim integration
+        run: |
+          cd research/tccn_va_rto
+          PYTHONPATH="$PWD:/tmp/airfogsim" python -m tccn_va_rto.airfogsim_live --airfogsim-root /tmp/airfogsim --steps 80 --seeds 3 --out results/airfogsim_live_paired
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: airfogsim-live-paired
+          path: research/tccn_va_rto/results/airfogsim_live_paired/
