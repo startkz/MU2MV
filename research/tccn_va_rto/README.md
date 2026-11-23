@@ -6,9 +6,11 @@
 
 - `tccn_va_rto/core.py`: seeded stochastic UAV–vehicle scenario (reflecting road mobility, 3D distance, contact-window first-exit prediction, Shannon-inspired TDMA airtime, real task queues), hidden vehicle correctness probabilities, possibly inflated reported reputations, authenticated challenge-response observations with communication/CPU/energy overhead, Bayesian Beta posteriors, and execution outcomes hidden from the scheduler unless a challenge yields feedback.
 - `DistributionalDP`: small-batch resource-constrained **loss-PMF propagation + CVaR**; FSD frontier pruning only among identical resource-usage states; explicit risk-infeasible fallback. Independent per-task failures are an assumption, not a theorem about the radio environment.
-- `va_rto`: a slow verification-budget controller updated every `slow_period` slots; fast stage evaluates verification versus no verification using a one-step information-gain proxy, then optimizes the task batch after observing the verification result. One challenge per slot, no more than `max_verifications_per_epoch` per slow epoch.
+- `va_rto`: a slow controller that assigns per-vehicle verification quotas every `slow_period` slots (using posterior uncertainty, reported reputation disagreement, and predicted contact opportunities); fast stage evaluates verification versus no verification using a one-step information-gain proxy, then optimizes the task batch after observing the verification result. One challenge per slot, no more than `max_verifications_per_epoch` per slow epoch.
 - Fairly evaluated candidate methods on identical generated workloads and keyed exogenous randomness: `ddp`, `neutral`, `random_verify`, `va_rto`, and `oracle` (uses hidden truth only as a **diagnostic upper-bound reference**, not a deployable approach).
 - `tccn_va_rto/airfogsim_trace.py`: **trace integration** with the upstream AirFogSim APIs (`getVehicleTrafficInfos`, `getUAVTrafficInfos`, `getAllToOffloadTaskInfos`). Can capture AirFogSim/SUMO task and position streams and replay them with the separately injected hidden-service process. It is **not** a live policy plugin and has not been end-to-end executed with SUMO in this environment.
+
+For formal assumptions, decision timing, posterior-update equations, pseudocode and the evidence contract, see [`FORMULATION_AND_ALGORITHM.md`](FORMULATION_AND_ALGORITHM.md). For the results-pending manuscript outline, see [`PAPER_TCCN_PLAN.md`](PAPER_TCCN_PLAN.md).
 
 ## References / boundaries
 
