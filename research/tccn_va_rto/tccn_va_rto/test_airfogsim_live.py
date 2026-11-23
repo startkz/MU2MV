@@ -22,6 +22,7 @@ class MockTask:
 
 class MockManager:
     def __init__(self):
+        self._task_dependencies={}
         self._waiting_to_offload_tasks={}
         self._offloading_tasks={}
         self._returning_tasks={}

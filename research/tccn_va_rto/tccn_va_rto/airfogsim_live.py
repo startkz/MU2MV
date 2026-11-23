@@ -103,6 +103,9 @@ class AirFogSimLiveAdapter:
             task_deadline=deadline,task_priority=priority,task_arrival_time=now,
             required_returned_size=reply,to_return_node_id=node,return_lazy_set=False)
         task.setGenerated()
+        # Register a DAG node: upstream offloadTask assumes the source DAG exists.
+        import networkx as nx
+        self.env.task_manager._task_dependencies.setdefault(node,nx.DiGraph()).add_node(task_id)
         self.env.task_manager._waiting_to_offload_tasks.setdefault(node,[]).append(task)
         ok=self.tasksched.setTaskOffloading(self.env,node,task_id,target)
         if not ok:raise RuntimeError(f'AirFogSim rejected task admission {task_id}')
