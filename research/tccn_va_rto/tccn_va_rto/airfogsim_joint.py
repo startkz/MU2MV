@@ -628,6 +628,7 @@ def run_joint_case(method,seed,c,upstream,out,trace=None):
     slow=SlowBudget(c,seed,method)
     observed=set();old={};planned=[];checks=[];outcomes=[];resource=[]
     try:
+        np.random.seed(int(draw(seed,'common-phy-slot',0)*(2**32-1)))
         adapter.advance(0)
         xx=cfg['traffic']['x_range']; yy=cfg['traffic']['y_range']
         u=env.traffic_manager._UAV_infos[c.target_uav]
@@ -659,6 +660,8 @@ def run_joint_case(method,seed,c,upstream,out,trace=None):
                                    reply=option['ret'] if node!=c.target_uav else 0.,deadline=option['ddl'])
                     adapter.rb_demand[tid]=option['rb']
             prior={v:tuple(d['position']) for v,d in env.traffic_manager.getVehicleTrafficInfos().items()}
+            # Common random numbers across policies for the upstream channel.
+            np.random.seed(int(draw(seed,'common-phy-slot',slot)*(2**32-1)))
             adapter.advance(slot)
             for r in adapter.completed_verifications(observed):
                 if r.status=='done':
