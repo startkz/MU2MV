@@ -574,8 +574,8 @@ def sumo_replay_trace(out,c,seed):
     route=out/'vehicles.rou.xml'
     xml=['<routes><vType id="v" accel="2.6" decel="4.5" length="5" maxSpeed="25" sigma="0"/>']
     for i in range(c.vehicles):
-        xml.append(f'<route id="r{i}" edges="{edges[int(draw(seed,'SUMO-route',i)*len(edges))]}"/>')
-        xml.append(f'<vehicle id="vehicle_{i}" route="r{i}" type="v" depart="{i*.4+.2*draw(seed,'SUMO-depart',i):.2f}" departSpeed="{8+9*draw(seed,'SUMO-speed',i):.2f}"/>')
+        xml.append(f'<route id="r{i}" edges="{edges[int(draw(seed,"SUMO-route",i)*len(edges))]}"/>')
+        xml.append(f'<vehicle id="vehicle_{i}" route="r{i}" type="v" depart="{i*.4+.2*draw(seed,"SUMO-depart",i):.2f}" departSpeed="{8+9*draw(seed,"SUMO-speed",i):.2f}"/>')
     route.write_text(''.join(xml)+'</routes>')
     cfg=out/'sim.sumocfg'
     cfg.write_text(f'<configuration><input><net-file value="{net.name}"/><route-files value="{route.name}"/></input><time><step-length value="{c.tti_s}"/><end value="{(c.steps+10)*c.tti_s}"/></time><random_number><seed value="{seed}"/></random_number></configuration>')
