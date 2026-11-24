@@ -1,0 +1,49 @@
+name: TCCN VA-RTO native joint DDP SUMO
+on:
+  push:
+    branches: [research/tccn-va-rto]
+    paths:
+      - "research/tccn_va_rto/tccn_va_rto/airfogsim_joint.py"
+      - "research/tccn_va_rto/tccn_va_rto/test_joint_airfogsim.py"
+      - ".github/workflows/tccn-va-rto-joint.yml"
+  workflow_dispatch:
+jobs:
+  native-joint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU dependencies and SUMO
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sumo sumo-tools
+          python -m pip install 'numpy==1.26.4' 'pandas==2.2.2' 'PyYAML>=6,<7' 'sumolib==1.20.0' 'traci==1.20.0' 'networkx>=3.2,<4' 'matplotlib>=3.7,<4' 'pillow>=10,<12' 'shapely>=2,<3' 'osmnx==1.9.4' 'tqdm>=4,<5' 'scipy>=1.11,<2' 'sympy>=1.12,<2'
+      - name: Pin AirFogSim simulator source
+        run: |
+          git clone --quiet https://github.com/ZhiweiWei-NAMI/AirFogSim.git /tmp/airfogsim
+          git -C /tmp/airfogsim checkout --quiet 76c0edb4ac6c7b5e09cc146db9928c1bc64bbb60
+          sumo --version | head -2
+          netgenerate --version | head -2
+      - name: Unit checks for finite DP and slow-tier control
+        run: |
+          cd research/tccn_va_rto
+          python -m unittest tccn_va_rto.test_joint_airfogsim -v
+      - name: Real AirFogSim native RB CPU task engine with departures and outages
+        run: |
+          cd research/tccn_va_rto
+          PYTHONPATH="$PWD:/tmp/airfogsim" python -m tccn_va_rto.airfogsim_joint --airfogsim-root /tmp/airfogsim --steps 97 --seeds 3 --outage 0.08 --burst 1 --out results/joint_departure_outage
+      - name: SUMO-simulated trajectories replayed in native AirFogSim task engine
+        run: |
+          cd research/tccn_va_rto
+          PYTHONPATH="$PWD:/tmp/airfogsim" python -m tccn_va_rto.airfogsim_joint --airfogsim-root /tmp/airfogsim --steps 129 --seeds 3 --sumo-mode --adaptive-timing --outage 0.08 --burst 2 --out results/joint_sumo
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: va-rto-native-joint-ddp-sumo-raw-evidence
+          path: |
+            research/tccn_va_rto/results/joint_departure_outage/
+            research/tccn_va_rto/results/joint_sumo/
+          retention-days: 30
