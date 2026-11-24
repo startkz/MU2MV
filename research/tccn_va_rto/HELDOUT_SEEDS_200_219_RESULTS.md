@@ -1,7 +1,7 @@
 # Independent 20-seed confirmation (frozen code)
 
-**Frozen research commit**: \`17d02c2300723193aca14c82e6b1b0a4a8b10c4b\`.
-**Pinned AirFogSim source**: \`76c0edb4ac6c7b5e09cc146db9928c1bc64bbb60\`.
+**Frozen research commit**: `17d02c2300723193aca14c82e6b1b0a4a8b10c4b`.
+**Pinned AirFogSim source**: `76c0edb4ac6c7b5e09cc146db9928c1bc64bbb60`.
 **Independent seeds**: 200–219 (20 matched runs per scenario); **not the development seeds 0–2**.
 **Raw logs and artifacts**: https://github.com/startkz/MU2MV/actions/runs/45299776739
 
