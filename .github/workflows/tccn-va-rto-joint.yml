@@ -18,8 +18,8 @@ jobs:
           python-version: '3.11'
       - name: Install CPU dependencies and SUMO
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sumo sumo-tools
+          python -m pip install 'eclipse-sumo==1.20.0'
+          echo "$(python -c 'import sumo; print(sumo.SUMO_HOME)')/bin" >> "$GITHUB_PATH"
           python -m pip install 'numpy==1.26.4' 'pandas==2.2.2' 'PyYAML>=6,<7' 'sumolib==1.20.0' 'traci==1.20.0' 'networkx>=3.2,<4' 'matplotlib>=3.7,<4' 'pillow>=10,<12' 'shapely>=2,<3' 'osmnx==1.9.4' 'tqdm>=4,<5' 'scipy>=1.11,<2' 'sympy>=1.12,<2'
       - name: Pin AirFogSim simulator source
         run: |
