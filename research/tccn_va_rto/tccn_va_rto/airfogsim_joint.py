@@ -368,7 +368,7 @@ class JointConfig(LiveConfig):
     verify_reservation_steps:int=12
     verify_deadline_s:float=1.1
     risk_budget:float=21.
-    max_local:int=3
+    max_local:int=1  # workload conservation: at most one new local job per arrival batch
     max_remote:int=1
     outage_probability:float=.08
     outage_burst:int=1
@@ -455,35 +455,58 @@ class SlowBudget:
         return ids[min(len(ids)-1,int(draw(self.seed,'pick',slot)*len(ids)))]
 
 class NativeJointAdapter(AirFogSimLiveAdapter):
-    """Schedules upstream RB allocations/CPU; only suppresses RBs for keyed outages."""
+    """Real AirFogSim RB scheduler: DDP demands, EDF, hard RB capacity, keyed outage."""
     def __init__(self,env,c,seed):
         super().__init__(env,c)
-        self.seed=seed;self.rb_demand={};self.outage_slots=0
+        self.seed=seed;self.rb_demand={};self.outage_slots=0;self.rb_shortfall_tti=0
     def schedule_tti(self,slot):
-        allocations=super().schedule_tti(slot)
+        # Delegate verification reservation and return routing to the tested
+        # upstream-live adapter, then replace equal-share *normal* allocations
+        # with the finite DDP's actual per-task RB decisions.
+        super().schedule_tti(slot)
         rr=self._reservation();v_id=rr.task_id if rr else None
+        pending=self._all_transmitting()
         blocked=0;ret={}
-        for tid,rbs in allocations.items():
+        self.env.activated_offloading_tasks_with_RB_Nos.clear()
+        reserve=self.cfg.verify_rbs if rr else 0
+        ordered=sorted((tid for tid in pending if tid!=v_id),
+             key=lambda tid:(pending[tid].task_deadline-
+                   (self.env.simulation_time-pending[tid].getTaskArrivalTime()),tid))
+        if v_id in pending:
+            ordered=[v_id]+ordered
+        cursor=reserve
+        for tid in ordered:
             target=self.task_target.get(tid,'')
             outage=(target!=self.cfg.target_uav and
-               (self.cfg.outage_burst>0 and slot%self.cfg.outage_period<self.cfg.outage_burst or
-                draw(self.seed,'outage',slot,target)<self.cfg.outage_probability))
+                (self.cfg.outage_burst>0 and slot%self.cfg.outage_period<self.cfg.outage_burst or
+                 draw(self.seed,'outage',slot,target)<self.cfg.outage_probability))
             if outage:
                 blocked+=1
-                self.env.activated_offloading_tasks_with_RB_Nos.pop(tid,None)
                 if rr and tid==v_id:
                     self.total_used_rb_tti-=self.cfg.verify_rbs;rr.rb_active-=self.cfg.verify_rbs
                     if self.tasks[tid].isReturning():rr.return_tti-=1
                     else:rr.upload_tti-=1
                 continue
-            new=rbs if tid==v_id else rbs[:self.rb_demand.get(tid,len(rbs))]
-            self.commsched.setCommunicationWithRB(self.env,tid,new)
-            ret[tid]=new
+            if tid==v_id:
+                actual=list(range(reserve))
+            else:
+                need=max(1,int(self.rb_demand.get(tid,4)))
+                take=min(need,max(0,self.rb_capacity-cursor))
+                if take<need:self.rb_shortfall_tti+=1
+                actual=list(range(cursor,cursor+take))
+                cursor+=take
+            if actual:
+                self.commsched.setCommunicationWithRB(self.env,tid,actual)
+                ret[tid]=actual
+        if sum(map(len,ret.values()))>self.rb_capacity:
+            raise AssertionError('radio blocks oversubscribed')
         self.outage_slots+=int(blocked>0)
         self.telemetry[-1]['outage_tasks']=blocked
         self.telemetry[-1]['other_rb_allocated']=sum(len(x) for tid,x in ret.items() if tid!=v_id)
-        self.telemetry[-1]['verify_rb_active']=self.cfg.verify_rbs if v_id in ret else 0
+        self.telemetry[-1]['verify_rb_active']=reserve if v_id in ret else 0
+        self.telemetry[-1]['ddp_rb_shortfall_count']=self.rb_shortfall_tti
         return ret
+
 
 def distributional_batch(env,c,beliefs,views,tasks,rb_available):
     """Exact enumeration over finite candidate actions, PMF convolution and CVaR.
