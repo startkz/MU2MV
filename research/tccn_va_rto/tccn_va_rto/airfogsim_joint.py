@@ -574,8 +574,8 @@ def sumo_replay_trace(out,c,seed):
     route=out/'vehicles.rou.xml'
     xml=['<routes><vType id="v" accel="2.6" decel="4.5" length="5" maxSpeed="25" sigma="0"/>']
     for i in range(c.vehicles):
-        xml.append(f'<route id="r{i}" edges="{edges[(i+seed)%len(edges)]}"/>')
-        xml.append(f'<vehicle id="vehicle_{i}" route="r{i}" type="v" depart="{i*.4:.1f}" departSpeed="max"/>')
+        xml.append(f'<route id="r{i}" edges="{edges[int(draw(seed,'SUMO-route',i)*len(edges))]}"/>')
+        xml.append(f'<vehicle id="vehicle_{i}" route="r{i}" type="v" depart="{i*.4+.2*draw(seed,'SUMO-depart',i):.2f}" departSpeed="{8+9*draw(seed,'SUMO-speed',i):.2f}"/>')
     route.write_text(''.join(xml)+'</routes>')
     cfg=out/'sim.sumocfg'
     cfg.write_text(f'<configuration><input><net-file value="{net.name}"/><route-files value="{route.name}"/></input><time><step-length value="{c.tti_s}"/><end value="{(c.steps+10)*c.tti_s}"/></time><random_number><seed value="{seed}"/></random_number></configuration>')
@@ -734,6 +734,7 @@ def joint_main():
     p.add_argument('--airfogsim-root',required=True,type=Path)
     p.add_argument('--out',required=True,type=Path)
     p.add_argument('--seeds',type=int,default=2)
+    p.add_argument('--seed-start',type=int,default=0)
     p.add_argument('--steps',type=int,default=97)
     p.add_argument('--sumo-mode',action='store_true')
     p.add_argument('--adaptive-timing',action='store_true')
@@ -743,6 +744,6 @@ def joint_main():
     args=p.parse_args()
     cfg=JointConfig(steps=args.steps,sumo_mode=args.sumo_mode,adaptive_timing=args.adaptive_timing,
         outage_probability=args.outage,outage_burst=args.burst,stress_departures=not args.no_departures)
-    joint_campaign(cfg,list(range(args.seeds)),args.airfogsim_root,args.out)
+    joint_campaign(cfg,list(range(args.seed_start,args.seed_start+args.seeds)),args.airfogsim_root,args.out)
 
 if __name__=='__main__':joint_main()
