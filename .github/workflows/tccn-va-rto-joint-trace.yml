@@ -1,0 +1,35 @@
+name: TCCN VA-RTO joint DDP native AirFogSim smoke
+on:
+  push:
+    branches: [research/tccn-va-rto]
+    paths:
+      - ".github/workflows/tccn-va-rto-joint-trace.yml"
+      - "research/tccn_va_rto/tccn_va_rto/airfogsim_joint.py"
+  workflow_dispatch:
+jobs:
+  joint-trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: CPU and AirFogSim Python dependencies (no SUMO daemon)
+        run: |
+          python -m pip install 'numpy==1.26.4' 'pandas==2.2.2' 'PyYAML>=6,<7' 'sumolib==1.20.0' 'traci==1.20.0' 'networkx>=3.2,<4' 'matplotlib>=3.7,<4' 'pillow>=10,<12' 'shapely>=2,<3' 'osmnx==1.9.4' 'tqdm>=4,<5' 'scipy>=1.11,<2' 'sympy>=1.12,<2'
+      - name: Pin AirFogSim
+        run: |
+          git clone --quiet https://github.com/ZhiweiWei-NAMI/AirFogSim.git /tmp/airfogsim
+          git -C /tmp/airfogsim checkout --quiet 76c0edb4ac6c7b5e09cc146db9928c1bc64bbb60
+      - name: Execute native AirFogSim paired joint DP with departures and outage
+        run: |
+          cd research/tccn_va_rto
+          python -m unittest tccn_va_rto.test_joint_airfogsim -v
+          PYTHONPATH="$PWD:/tmp/airfogsim" python -m tccn_va_rto.airfogsim_joint --airfogsim-root /tmp/airfogsim --steps 97 --seeds 3 --outage 0.08 --burst 1 --out results/joint_trace_fast
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: va-rto-joint-native-trace-evidence
+          path: research/tccn_va_rto/results/joint_trace_fast/
+          retention-days: 30
